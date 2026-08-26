@@ -1,6 +1,6 @@
 -- MysticmMoth Hub
 -- Originated by Credits To LeoDicap On The Old V3rmillion For Helping Me A Lot With The Script, He Wants To Keep His Discord Private.
--- Version: 2.0.0 Fluent UI Refresh
+-- Version: 2.0.1 Fluent UI Refresh
 -- UI: Fluent-modded by StyearX
 
 local Players = game:GetService("Players")
@@ -32,12 +32,54 @@ if game.PlaceId ~= SUPPORTED_PLACE and not LOBBY_PLACES[game.PlaceId] then
     return
 end
 
--- Fluent-modded loader from the repository requested by the user.
-local Fluent = loadstring(game:HttpGet("https://github.com/StyearX/Fluent-Modded/releases/download/Fluent/FluentPro"))()
+-- Fluent-modded loader from StyearX.
+-- Wrapped so a failed library download does not hard-error the whole script.
+local Fluent
+do
+    local ok, result = pcall(function()
+        local source = game:HttpGet("https://github.com/StyearX/Fluent-Modded/releases/download/Fluent/FluentPro")
+        local loader = loadstring(source)
+        assert(loader, "Fluent library returned invalid Lua source")
+        return loader()
+    end)
+    if not ok or not result then
+        notifyFallback("MysticmMoth Hub", "Warning: Fluent UI failed to load. Check executor HttpGet/loadstring support.")
+        return
+    end
+    Fluent = result
+end
+
+-- Lobby gets its own small Fluent interface, then stops here.
+if LOBBY_PLACES[game.PlaceId] then
+    local Window = Fluent:CreateWindow({
+        Title = "MysticmMoth Hub",
+        SubTitle = "Lobby • v2.0.1",
+        TabWidth = 160,
+        Size = UDim2.fromOffset(560, 440),
+        Acrylic = true,
+        Theme = "Deep Violet",
+        MinimizeKey = Enum.KeyCode.LeftControl,
+        Search = true,
+    })
+    local Tab = Window:AddTab({Title = "Free Gamepasses", Icon = "solar/gamepad-bold"})
+    Tab:AddParagraph({Title = "MysticmMoth Hub", Content = "Lobby utilities"})
+    Tab:AddButton({Title = "Free Hacker Role", Icon = "solar/phone-bold", Callback = function()
+        local remotes = ReplicatedStorage:FindFirstChild("RemoteEvents")
+        local role = remotes and remotes:FindFirstChild("OutsideRole")
+        if role then role:FireServer("Phone", true, false) else notifyFallback("Warning", "OutsideRole remote not found.") end
+    end})
+    Tab:AddButton({Title = "Free Nerd Kid Role", Icon = "solar/book-bold", Callback = function()
+        local remotes = ReplicatedStorage:FindFirstChild("RemoteEvents")
+        local role = remotes and remotes:FindFirstChild("OutsideRole")
+        if role then role:FireServer("Book", true, false) else notifyFallback("Warning", "OutsideRole remote not found.") end
+    end})
+    Tab:AddParagraph({Title = "Updates", Content = "v2.0.1 • Fluent-modded UI • safer checks • fixed execution errors"})
+    return
+end
 
 local Window = Fluent:CreateWindow({
     Title = "MysticmMoth Hub",
-    SubTitle = "v2.0.0 • Fluent UI Refresh",
+    SubTitle = "v2.0.1 • Fluent UI Refresh",
     TabWidth = 160,
     Size = UDim2.fromOffset(620, 500),
     Acrylic = true,
@@ -325,6 +367,22 @@ local function GetAllOutsideItems()
     end
 end
 
+local function GetGAppleBadge()
+    local trees = Workspace:FindFirstChild("FallenTrees")
+    local apple = Workspace:FindFirstChild("GoldenApple")
+    if not trees or not apple then
+        return Notify("Warning", "Golden Apple has not spawned yet. Wait until the first wave.", 5)
+    end
+    for _, tree in ipairs(trees:GetChildren()) do
+        local hit = tree:FindFirstChild("TreeHitPart")
+        if hit then for _ = 1, 20 do Fire("RoadMissionEvent", 1, hit, 5) end end
+    end
+    task.wait(1)
+    TeleportTo(CFrame.new(61.8781624, 29.4499969, -534.381165))
+    local cd = apple:FindFirstChildOfClass("ClickDetector")
+    if cd then pcall(function() fireclickdetector(cd) end) else Notify("Warning", "Golden Apple ClickDetector not found.", 4) end
+end
+
 local function AntiMud(state)
     local bog = Workspace:FindFirstChild("BogArea")
     bog = bog and bog:FindFirstChild("Bog")
@@ -426,6 +484,14 @@ PowerTab:AddButton({Title="Heal All", Callback=HealAllPlayers})
 PowerTab:AddToggle({Title="Loop Heal All", Default=false, Callback=function(v) State.HealAllLoop=v; if v then task.spawn(function() while State.HealAllLoop do HealAllPlayers(); task.wait(3) end end) end end})
 PowerTab:AddToggle({Title="Semi-Godmode", Default=false, Callback=function(v) State.SemiGodmode=v; Notify("Info", v and "Semi-Godmode enabled." or "Semi-Godmode disabled.", 4) end})
 PowerTab:AddToggle({Title="Remove Slipping", Default=false, Callback=function(v) State.RemoveSlipping=v; Notify("Info", v and "Remove Slipping enabled." or "Remove Slipping disabled.", 4) end})
+PowerTab:AddToggle({Title="Remove Hailing", Default=false, Callback=function(v)
+    local hails=Workspace:FindFirstChild("Hails")
+    if v then
+        if hails then hails.Parent=nil end
+    elseif not hails then
+        Notify("Info","Hailing was removed locally; rejoin/respawn to restore it.",5)
+    end
+end})
 PowerTab:AddToggle({Title="Remove Wind", Default=false, Callback=function(v) State.NoWind=v; if v then task.spawn(function() while State.NoWind do AntiWind(); task.wait(.5) end end) end end})
 PowerTab:AddToggle({Title="Remove Mud", Default=false, Callback=function(v) AntiMud(v) end})
 PowerTab:AddButton({Title="Equip All", Callback=EquipAllTools})
@@ -470,6 +536,15 @@ TeleTab:AddButton({Title="Outside Loot", Callback=function()
     local f=Workspace:FindFirstChild("OutsideParts"); local part=f and f:FindFirstChildWhichIsA("BasePart",true)
     if part then TeleportTo(part.CFrame+Vector3.new(10,0,0)) else Notify("Warning","Outside loot is unavailable.",4) end
 end})
+TeleTab:AddButton({Title="Experiment Room", Callback=function()
+    local final=Workspace:FindFirstChild("Final"); local factory=final and final:FindFirstChild("Factory"); local red=factory and factory:FindFirstChild("RedDesk"); local drawer=red and red:FindFirstChild("Drawer")
+    local children=drawer and drawer:GetChildren(); local target=children and children[2]
+    if target and target:IsA("BasePart") then TeleportTo(target.CFrame+Vector3.new(20,0,0)) else Notify("Warning","Experiment Room is unavailable.",4) end
+end})
+TeleTab:AddButton({Title="Cafeteria", Callback=function()
+    local final=Workspace:FindFirstChild("Final"); local factory=final and final:FindFirstChild("Factory"); local legs=factory and factory:FindFirstChild("Legs",true)
+    if legs and legs:IsA("BasePart") then TeleportTo(legs.CFrame) else Notify("Warning","Cafeteria is unavailable.",4) end
+end})
 TeleTab:AddButton({Title="Rainbow Pizza Box", Callback=function() local x=Workspace:FindFirstChild("RainbowPizzaBox"); if x and x:IsA("BasePart") then TeleportTo(x.CFrame) elseif x and x:IsA("Model") and x.PrimaryPart then TeleportTo(x.PrimaryPart.CFrame) else Notify("Warning","Rainbow Pizza Box not found.",4) end end})
 
 HumTab:AddSlider({Title="Walk Speed", Min=0, Max=500, Default=50, Rounding=0, Callback=function(v) State.ModifiedWalkspeed=v end})
@@ -495,6 +570,7 @@ BadgeTab:AddButton({Title="Operation: Dog Rescue", Callback=GetDog})
 BadgeTab:AddButton({Title="Wake Up, Bradley!", Callback=GetAgent})
 BadgeTab:AddButton({Title="Uncle Pete's Return", Callback=GetUncle})
 BadgeTab:AddButton({Title="Reformed", Callback=GetSecretEnding})
+BadgeTab:AddButton({Title="The Golden Apple", Callback=GetGAppleBadge})
 BadgeTab:AddButton({Title="Delivery's Here", Callback=GetAllOutsideItems})
 BadgeTab:AddButton({Title="So Speedy", Callback=function() for _=1,5 do Train("Speed") end end})
 BadgeTab:AddButton({Title="So Strong", Callback=function() for _=1,5 do Train("Strength") end end})
@@ -519,7 +595,7 @@ local originalFog=Lighting.FogEnd
 local originalShadows=Lighting.GlobalShadows
 MiscTab:AddToggle({Title="Full Bright", Default=false, Callback=function(v) if v then Lighting.Brightness=1; Lighting.FogEnd=999999; Lighting.GlobalShadows=false else Lighting.Brightness=originalBrightness; Lighting.FogEnd=originalFog; Lighting.GlobalShadows=originalShadows end end})
 
-UpdatesTab:AddParagraph({Title="Updates", Content=[[MysticmMoth Hub • v2.0.0
+UpdatesTab:AddParagraph({Title="Updates", Content=[[MysticmMoth Hub • v2.0.1
 
 • Rebuilt the interface using Fluent-modded.
 • Added search-friendly tabs and modern icons.
@@ -534,4 +610,4 @@ UpdatesTab:AddParagraph({Title="Updates", Content=[[MysticmMoth Hub • v2.0.0
 Originated by Credits To LeoDicap On The Old V3rmillion.]]})
 UpdatesTab:AddParagraph({Title="UI Library", Content="Fluent-modded by StyearX • modern themes, search, icon packs and refreshed elements."})
 
-Notify("MysticmMoth Hub", "Loaded successfully! UI refreshed • v2.0.0", 7)
+Notify("MysticmMoth Hub", "Loaded successfully! UI refreshed • v2.0.1", 7)
